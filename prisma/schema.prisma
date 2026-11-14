@@ -1,0 +1,146 @@
+// Schéma TransfertMony — PostgreSQL.
+// Tous les montants sont en Decimal (jamais en Float) pour éviter les erreurs d'arrondi.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Cycle de vie d'un transfert (voir src/lib/status.js pour les libellés affichés).
+enum TransactionStatus {
+  PENDING           // créé, encaissement pas encore demandé
+  COLLECTING        // encaissement demandé, attente de validation par l'expéditeur
+  COLLECTED         // fonds encaissés, décaissement à lancer
+  PAYOUT_PROCESSING // décaissement demandé à SasPay
+  COMPLETED         // destinataire crédité
+  FAILED            // encaissement échoué : aucun débit
+  PAYOUT_FAILED     // encaissé mais décaissement échoué : REMBOURSEMENT REQUIS
+  ON_HOLD           // anomalie (montant encaissé incohérent) : vérification manuelle
+  REFUNDED          // expéditeur remboursé
+}
+
+model User {
+  id                String    @id @default(cuid())
+  firstName         String
+  lastName          String
+  email             String    @unique
+  phone             String    @unique // format international sans « + » (ex. 242061234567)
+  passwordHash      String
+  pinHash           String
+  pinFailedAttempts Int       @default(0)
+  pinLockedUntil    DateTime?
+
+  countryCode  String
+  country      CountryRate @relation(fields: [countryCode], references: [countryCode])
+  momoNumber   String      @unique // numéro Mobile Money par défaut pour recevoir
+  momoOperator String
+  receiveHandle String     @unique // identifiant du lien de réception personnel
+
+  sentTransactions     Transaction[] @relation("SentTransactions")
+  receivedTransactions Transaction[] @relation("ReceivedTransactions")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Paramètres par pays : devise, opérateurs, frais, limites et taux de change.
+model CountryRate {
+  countryCode      String   @id // ISO 3166-1 alpha-2 (CG, CI, SN…)
+  name             String
+  dialCode         String   // indicatif sans « + » (242, 225…)
+  currency         String   // ISO 4217 (XAF, XOF, KES…)
+  currencyDecimals Int      @default(0)
+  /// Unités de la devise locale pour 1 USD : le taux croisé = to.unitsPerUsd / from.unitsPerUsd.
+  unitsPerUsd      Decimal  @db.Decimal(20, 8)
+  feePercent       Decimal  @default(0) @db.Decimal(5, 2)  // frais en % du montant envoyé
+  feeFixed         Decimal  @default(0) @db.Decimal(18, 2) // frais fixes en devise locale
+  minAmount        Decimal  @db.Decimal(18, 2)
+  maxAmount        Decimal  @db.Decimal(18, 2)
+  operators        String[] // MTN, AIRTEL, ORANGE, WAVE, MPESA, MOOV…
+  canSend          Boolean  @default(true)
+  canReceive       Boolean  @default(true)
+  isActive         Boolean  @default(true)
+
+  users     User[]
+  updatedAt DateTime @updatedAt
+}
+
+model Transaction {
+  id             String @id @default(cuid())
+  reference      String @unique // envoyée à SasPay (TM-…)
+  idempotencyKey String
+  requestHash    String // empreinte de la requête : une clé réutilisée pour un autre transfert est refusée
+
+  senderId    String
+  sender      User    @relation("SentTransactions", fields: [senderId], references: [id])
+  recipientId String? // renseigné si le destinataire a un compte TransfertMony
+  recipient   User?   @relation("ReceivedTransactions", fields: [recipientId], references: [id])
+
+  fromCountry       String
+  toCountry         String
+  senderPhone       String
+  senderOperator    String
+  recipientPhone    String
+  recipientOperator String
+  recipientName     String?
+
+  // Montants figés au moment de la création (le taux peut changer ensuite).
+  sendAmount      Decimal @db.Decimal(18, 2)
+  sendCurrency    String
+  fee             Decimal @db.Decimal(18, 2)
+  totalDebit      Decimal @db.Decimal(18, 2) // sendAmount + fee : montant encaissé
+  exchangeRate    Decimal @db.Decimal(20, 8)
+  receiveAmount   Decimal @db.Decimal(18, 2)
+  receiveCurrency String
+
+  status            TransactionStatus @default(PENDING)
+  collectProviderRef String?          @unique
+  payoutProviderRef  String?          @unique
+  payoutAttempts     Int              @default(0)
+  failureReason      String?
+
+  collectedAt  DateTime?
+  completedAt  DateTime?
+  failedAt     DateTime?
+  reconciledAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  events TransactionEvent[]
+
+  @@unique([senderId, idempotencyKey]) // idempotence : un même envoi ne peut exister qu'une fois
+  @@index([senderId, createdAt])
+  @@index([recipientId, createdAt])
+  @@index([status, updatedAt])
+}
+
+/// Journal d'audit immuable de chaque changement de statut.
+model TransactionEvent {
+  id            String            @id @default(cuid())
+  transactionId String
+  transaction   Transaction       @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  status        TransactionStatus
+  note          String?
+  createdAt     DateTime          @default(now())
+
+  @@index([transactionId, createdAt])
+}
+
+/// Webhooks reçus : déduplication et traçabilité.
+model WebhookEvent {
+  id          String    @id @default(cuid())
+  provider    String
+  eventId     String    @unique
+  type        String
+  reference   String
+  payload     Json
+  processedAt DateTime?
+  error       String?
+  createdAt   DateTime  @default(now())
+
+  @@index([reference])
+}
