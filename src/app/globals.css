@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+/* Jetons de design TransfertMony */
+@theme {
+  --color-mist: #edf1ef;
+  --color-surface: #ffffff;
+  --color-ink: #0f2a2e;
+  --color-ink-soft: #4f6366;
+  --color-line: #d3dcd9;
+  --color-malachite: #0a7f5a;
+  --color-malachite-deep: #075e43;
+  --color-malachite-wash: #e2f2ec;
+  --color-saffron: #f2b33d;
+  --color-clay: #b3261e;
+  --color-clay-wash: #fbe9e7;
+  --color-amber: #9a5b00;
+  --color-amber-wash: #fdf1dc;
+
+  --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-ticket: 1.75rem;
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-mist);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Chiffres à chasse fixe : les montants ne « sautent » pas quand ils changent */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-malachite);
+  outline-offset: 2px;
+}
+
+/* Champ de montant : sans flèches natives */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+@keyframes ticket-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.ticket-in {
+  animation: ticket-in 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
