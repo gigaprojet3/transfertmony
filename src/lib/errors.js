@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { unstable_rethrow } from "next/navigation";
 
 /**
  * Erreur métier « attendue » : son message peut être montré à l'utilisateur.
@@ -15,10 +16,20 @@ export class AppError extends Error {
 }
 
 export function errorResponse(err) {
+  // Erreurs internes de Next.js (rendu dynamique, redirect…) : à laisser remonter, ce ne sont pas des bugs.
+  unstable_rethrow(err);
   if (err instanceof AppError) {
     return NextResponse.json(
       { error: { code: err.code, message: err.message, details: err.details } },
       { status: err.status }
+    );
+  }
+  // Base de données injoignable (serveur arrêté, mauvais DATABASE_URL…) : 503 plutôt que 500.
+  if (err?.name === "PrismaClientInitializationError") {
+    console.error("[TransfertMony] Base de données injoignable :", err.message);
+    return NextResponse.json(
+      { error: { code: "SERVICE_UNAVAILABLE", message: "Service momentanément indisponible. Réessayez dans quelques instants." } },
+      { status: 503 }
     );
   }
   // Ne jamais renvoyer le détail d'une erreur interne au client.

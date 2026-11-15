@@ -7,11 +7,16 @@ Stack : Next.js 16 (App Router, API Routes) · Tailwind CSS 4 · PostgreSQL + Pr
 ## Démarrage
 
 ```bash
-cp .env.example .env          # puis renseigner DATABASE_URL et les clés SasPay
+cp .env.example .env          # puis renseigner les clés SasPay
+npx prisma dev --name transfertmony --detach   # PostgreSQL local, sans installation
+npx prisma dev ls             # copier l'URL « TCP » dans DATABASE_URL (.env)
 npx prisma migrate dev --name init
 npx prisma db seed            # pays, devises, opérateurs, frais
 npm run dev
 ```
+
+Après un redémarrage du PC : `npm run db:start` (base locale), puis `npm run dev`.
+En production, remplacer `DATABASE_URL` par un vrai PostgreSQL managé (Neon, Supabase, RDS…).
 
 Ouvrir http://localhost:3000, créer un compte, puis envoyer un transfert depuis le tableau de bord.
 

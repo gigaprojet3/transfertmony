@@ -1,7 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  /* config options here */
   cacheComponents: true,
+  // Redirection fixe : gérée avant le rendu (pas de redirect() dans une page prérendue).
+  async redirects() {
+    return [{ source: "/", destination: "/dashboard", permanent: false }];
+  },
   partialPrefetching: true,
   turbopack: {
     rules: {
